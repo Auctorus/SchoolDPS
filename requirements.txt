@@ -17,6 +17,7 @@ Jinja2==3.1.6
 lxml==5.4.0
 MarkupSafe==3.0.2
 multidict==6.4.4
+gunicorn==20.1.0
 pillow==11.2.1
 propcache==0.3.1
 PyJWT==2.10.1
