@@ -190,13 +190,20 @@ def index():
         media_url = f"https://schooldpsv1.onrender.com/uploads/{docx_filename}"
         
         send_whatsapp_message(media_url)
+
+         # Delete the sent file immediately after sending
+        try:
+            os.remove(os.path.join("uploads", docx_filename))
+        except FileNotFoundError:
+            pass
+
         return "Form submitted and file sent via WhatsApp!"
 
     return render_template_string(form_html)
 
-@app.route('/upload/<path:filename>')
+@app.route('/uploads/<path:filename>')    
 def serve_upload(filename):
-    return send_from_directory('upload', filename)
+    return send_from_directory('uploads', filename)
 
 
 def set_row_height(row, height_pt):
@@ -212,10 +219,14 @@ def generate_admission_filename(user_name, doc):
 
     safe_name = user_name.strip().replace(" ", "_")
 
-    existing_files = [
+    existing_files = sorted([
         f for f in os.listdir("uploads")
         if f.startswith(safe_name + "_admission") and f.endswith(".docx")
-    ]
+    ], key=lambda x: os.path.getctime(os.path.join("uploads", x)))
+
+    if len(existing_files) >= 5:
+        for old_file in existing_files[:len(existing_files) - 4]:
+            os.remove(os.path.join("uploads", old_file))
 
     max_num = 0
     for f in existing_files:
