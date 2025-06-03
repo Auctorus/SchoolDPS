@@ -1,8 +1,23 @@
 from flask import Flask, request, send_file, render_template_string
 from docx import Document
+from docx.shared import Inches, Pt
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+from twilio.rest import Client
+from dotenv import load_dotenv
+from flask import send_from_directory
 import os
 
 app = Flask(__name__)
+
+load_dotenv()
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")  # e.g., whatsapp:+14155238886
+TARGET_WHATSAPP_NUMBER = os.getenv("TARGET_WHATSAPP_NUMBER")  # your phone number with whatsapp:
+
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
 form_html = '''<!DOCTYPE html>
 <html>
 <head>
@@ -168,14 +183,21 @@ form_html = '''<!DOCTYPE html>
 def index():
     if request.method == "POST":
         form_data = {key: request.form[key] for key in request.form}
-        docx_path = generate_filled_docx(form_data)
-        return send_file(docx_path, as_attachment=True)
+        docx_filename = generate_filled_docx(form_data)
+        
+        # Step 1: Upload your docx file to a static URL or pre-upload to a cloud (you need to implement it)
+        # For now assume it is uploaded and publicly accessible via this placeholder:
+        media_url = f"https://schooldpsv1.onrender.com/uploads/{docx_filename}"
+        
+        send_whatsapp_message(media_url)
+        return "Form submitted and file sent via WhatsApp!"
 
     return render_template_string(form_html)
 
-from docx.shared import Inches, Pt
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+@app.route('/upload/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory('upload', filename)
+
 
 def set_row_height(row, height_pt):
     tr = row._tr
@@ -184,7 +206,33 @@ def set_row_height(row, height_pt):
     trHeight.set(qn('w:val'), str(int(height_pt * 20)))  # height in twips
     trHeight.set(qn('w:hRule'), 'exact')
     trPr.append(trHeight)
-    
+
+def generate_admission_filename(user_name, doc):
+    os.makedirs("uploads", exist_ok=True)
+
+    safe_name = user_name.strip().replace(" ", "_")
+
+    existing_files = [
+        f for f in os.listdir("uploads")
+        if f.startswith(safe_name + "_admission") and f.endswith(".docx")
+    ]
+
+    max_num = 0
+    for f in existing_files:
+        try:
+            number_part = f[len(safe_name) + len("_admission"):-5]
+            number = int(number_part)
+            max_num = max(max_num, number)
+        except ValueError:
+            continue
+
+    new_number = max_num + 1
+    filename = f"{safe_name}_admission{new_number}.docx"
+    output_path = os.path.join("uploads", filename)
+    doc.save(output_path)
+
+    return filename
+
 def generate_filled_docx(data):
     template_path = "static/template1.docx"
     doc = Document(template_path)
@@ -214,9 +262,19 @@ def generate_filled_docx(data):
     #     cells[0].text = ""
     #     cells[1].text = ""
 
-    output_path = "generated_admission_form.docx"
-    doc.save(output_path)
-    return output_path
+    # for row in table.rows:
+    #     set_row_height(row, 20)
+
+    return generate_admission_filename(data['FullName'], doc)
+
+def send_whatsapp_message(media_url):
+    message = client.messages.create(
+        body="Here's the generated admission form:",
+        from_=TWILIO_WHATSAPP_NUMBER,
+        to=TARGET_WHATSAPP_NUMBER,
+        media_url=[media_url]
+    )
+    print(f"Message SID: {message.sid}")
 
 if __name__ == "__main__":
     app.run(debug=True)
